@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/SupportDesk.Core/SupportDesk.Core.csproj" />
+  <Project Path="src/SupportDesk.Desktop/SupportDesk.Desktop.csproj" />
+  <Project Path="src/SupportDesk.Api/SupportDesk.Api.csproj" />
+  <Project Path="tests/SupportDesk.Tests/SupportDesk.Tests.csproj" />
+  <Project Path="tests/UpdateProbe/UpdateProbe.csproj" />
+</Solution>

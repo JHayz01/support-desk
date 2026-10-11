@@ -1,0 +1,24 @@
+[Unit]
+Description=SupportDesk local multilingual embeddings
+After=network.target
+
+[Service]
+User=supportdesk
+Group=supportdesk
+WorkingDirectory=/opt/cristalix-support
+Environment=SUPPORT_MODEL_DIR=/opt/cristalix-support/models
+Environment=OMP_NUM_THREADS=2
+Environment=TOKENIZERS_PARALLELISM=false
+ExecStart=/opt/cristalix-support/venv/bin/python /opt/cristalix-support/embedding.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+MemoryMax=700M
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target
