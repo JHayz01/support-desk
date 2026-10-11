@@ -1,0 +1,134 @@
+# ==============================
+# Visual Studio / Rider / VS Code
+# ==============================
+.vs/
+.vscode/
+.idea/
+_ReSharper*/
+*.DotSettings.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.sln.iml
+
+# ==============================
+# .NET / C# build
+# ==============================
+**/bin/
+**/obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]64/
+artifacts/
+publish/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+coverage-report/
+*.pdb
+*.mdb
+*.cache
+*.tmp
+*.log
+
+# ==============================
+# NuGet
+# ==============================
+*.nupkg
+*.snupkg
+packages/
+.nuget/packages/
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ==============================
+# AI / ML
+# ==============================
+models/
+*.onnx
+*.onnx_data
+*.pt
+*.pth
+*.safetensors
+*.tflite
+
+# ==============================
+# Database
+# ==============================
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+*.bak
+*.backup
+*.dump
+
+# ==============================
+# Secrets / Certificates
+# ==============================
+.env
+.env.*
+!.env.example
+!.env.sample
+
+.private/
+secrets/
+*.pem
+*.pfx
+*.p12
+*.key
+*.vault
+*.jks
+*.keystore
+
+password.json
+connection.local.json
+appsettings.Local.json
+appsettings.Development.local.json
+**/appsettings.*.local.json
+**/secrets.json
+
+# ==============================
+# Local application data
+# ==============================
+data/
+logs/
+temp/
+tmp/
+cache/
+.local/
+*.pid
+*.lock
+
+# ==============================
+# Operating systems
+# ==============================
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

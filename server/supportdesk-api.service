@@ -1,0 +1,26 @@
+[Unit]
+Description=Cristalix Support authenticated API
+After=network.target supportdesk-embeddings.service
+
+[Service]
+User=supportdesk
+Group=supportdesk
+WorkingDirectory=/opt/cristalix-support
+Environment=SUPPORT_HOME=/opt/cristalix-support
+EnvironmentFile=/opt/cristalix-support/server.env
+Environment=SUPPORT_CERT=/opt/cristalix-support/tls/server.crt
+Environment=SUPPORT_KEY=/opt/cristalix-support/tls/server.key
+Environment=SUPPORT_PORT=8444
+ExecStart=/opt/cristalix-support/app/SupportDesk.Api
+Restart=on-failure
+RestartSec=4
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/cristalix-support/data
+UMask=0077
+MemoryMax=500M
+
+[Install]
+WantedBy=multi-user.target
