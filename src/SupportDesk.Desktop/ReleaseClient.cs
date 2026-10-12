@@ -7,6 +7,7 @@ public sealed record AppRelease(Version Version, Uri Page, string Notes, Release
 
 public static class ReleaseClient
 {
+    public const string Repository = "JHayz01/support-desk";
     public static Version Current => typeof(ReleaseClient).Assembly.GetName().Version!;
     public static string CurrentLabel => Current.ToString(3);
     public static bool IsNewer(Version version) => new Version(version.Major, version.Minor, Math.Max(0, version.Build), Math.Max(0, version.Revision)) > Current;
@@ -23,19 +24,6 @@ public static class ReleaseClient
         if (!Regex.IsMatch(repository, @"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$"))
             throw new ArgumentException("Укажите репозиторий в формате владелец/название или ссылку на GitHub.");
         return repository;
-    }
-
-    public static string DefaultRepository()
-    {
-        try
-        {
-            var path = Path.Combine(AppContext.BaseDirectory, "release.json");
-            using var stream = File.Exists(path) ? File.OpenRead(path) : typeof(ReleaseClient).Assembly.GetManifestResourceStream("SupportDesk.Release")!;
-            using var document = JsonDocument.Parse(stream);
-            var value = document.RootElement.GetProperty("Repository").GetString() ?? "";
-            return value.Length == 0 ? "" : NormalizeRepository(value);
-        }
-        catch { return ""; }
     }
 
     public static AppRelease? Parse(string repository, string json)

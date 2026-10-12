@@ -422,7 +422,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { vm.Status = ex.Message; ShowToast(ex.Message, "Не удалось заменить команду"); }
     }
-    string UpdateRepository => vm.Local.Settings.UpdateRepository.Length > 0 ? vm.Local.Settings.UpdateRepository : ReleaseClient.DefaultRepository();
+    string UpdateRepository => ReleaseClient.Repository;
     void UpdatesClick(object sender, RoutedEventArgs e) => ShowUpdates();
     async Task CheckUpdatesQuietly()
     {
@@ -443,7 +443,6 @@ public partial class MainWindow : Window
     {
         var form = new StackPanel { Margin = new Thickness(20) };
         form.Children.Add(new TextBlock { Text = "Обновления · " + ReleaseClient.CurrentLabel, FontSize = 20 });
-        var repository = Field(form, "Публичный репозиторий GitHub (владелец/support-desk)", UpdateRepository);
         var automatic = new CheckBox { Content = "Проверять новые версии автоматически", IsChecked = vm.Local.Settings.CheckUpdates };
         form.Children.Add(automatic);
         automatic.Click += (_, _) => { vm.Local.Settings.CheckUpdates = automatic.IsChecked == true; vm.Local.SaveSettings(); };
@@ -454,7 +453,7 @@ public partial class MainWindow : Window
         var check = new Button { Content = "Проверить обновления" };
         var install = new Button { Content = "Скачать и установить", Visibility = Visibility.Collapsed };
         var cancel = new Button { Content = "Отменить скачивание", Visibility = Visibility.Collapsed };
-        var win = Dialog("Обновления", form, 580, 500);
+        var win = Dialog("Обновления", form, 580, 430);
         CancellationTokenSource? download = null;
         AppRelease? shown = availableUpdate;
         void ShowRelease(AppRelease? release)
@@ -466,19 +465,14 @@ public partial class MainWindow : Window
             status.Text = release is null ? "Нет опубликованной стабильной версии или репозиторий недоступен. Для обновлений нужна версия в разделе Releases." : !ReleaseClient.IsNewer(release.Version) ? "Установлена актуальная версия." : "Доступна версия " + release.Version + (release.Package is null ? " · Windows-архив еще не опубликован." : "") + "\n\n" + release.Notes;
         }
         if (shown is not null) ShowRelease(shown);
-        repository.TextChanged += (_, _) => install.Visibility = Visibility.Collapsed;
         check.Click += async (_, _) =>
         {
             check.IsEnabled = false; install.Visibility = Visibility.Collapsed;
             try
             {
-                var name = ReleaseClient.NormalizeRepository(repository.Text);
-                vm.Local.Settings.UpdateRepository = name;
-                vm.Local.SaveSettings();
                 status.Text = "Проверка GitHub Releases…";
-                ShowRelease(await ReleaseClient.Check(name));
+                ShowRelease(await ReleaseClient.Check(UpdateRepository));
             }
-            catch (ArgumentException ex) { status.Text = ex.Message; }
             catch (Exception) { status.Text = "Не удалось проверить обновления. Проверьте соединение и доступность репозитория."; }
             finally { check.IsEnabled = true; }
         };
@@ -489,7 +483,7 @@ public partial class MainWindow : Window
             if (shown is null) return;
             var release = shown;
             download = new();
-            check.IsEnabled = install.IsEnabled = repository.IsEnabled = false;
+            check.IsEnabled = install.IsEnabled = false;
             cancel.Visibility = progress.Visibility = Visibility.Visible;
             string? stage = null; bool started = false;
             try
@@ -509,7 +503,7 @@ public partial class MainWindow : Window
             {
                 if (!started && stage is not null) UpdateInstaller.DeleteStage(stage);
                 download.Dispose(); download = null;
-                check.IsEnabled = install.IsEnabled = repository.IsEnabled = true;
+                check.IsEnabled = install.IsEnabled = true;
                 cancel.Visibility = progress.Visibility = Visibility.Collapsed;
             }
         };

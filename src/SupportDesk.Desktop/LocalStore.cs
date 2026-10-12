@@ -31,7 +31,6 @@ public sealed class Settings
     public bool CloseToTray { get; set; } = true;
     public bool Maximized { get; set; }
     public int WindowLayoutVersion { get; set; }
-    public string UpdateRepository { get; set; } = "";
     public bool CheckUpdates { get; set; } = true;
     public double Width { get; set; } = 1100;
     public double Height { get; set; } = 800;
