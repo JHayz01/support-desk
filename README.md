@@ -28,6 +28,8 @@
 
 Готовые файлы появятся в `artifacts/`. Решение для Visual Studio: `CristalixSupport.slnx`. Настройка собственного сервера описана в [server/README.md](server/README.md).
 
+GitHub Actions проверяет каждый push. После успешной проверки push в `main` автоматически публикует Release, если версия в `src/SupportDesk.Desktop/SupportDesk.Desktop.csproj` ещё не опубликована. Для следующего выпуска увеличьте `<Version>` и отправьте изменение в `main`; повторные коммиты с той же версией не создают новый Release.
+
 ## Лицензия
 
 MIT. Неофициальное приложение. Логотип Cristalix принадлежит его правообладателям.
