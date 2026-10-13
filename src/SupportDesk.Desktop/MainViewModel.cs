@@ -337,7 +337,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public async Task SaveAnswer(Answer a, long version, bool delete = false)
     {
         if (api is null || !Unlocked)
-            return;
+            throw new InvalidOperationException("Нет подключения к общей базе. Подключитесь и повторите действие.");
         await api.Request<JsonElement>(delete ? HttpMethod.Delete : HttpMethod.Put, "/v2/answers/" + Uri.EscapeDataString(a.Id), new ChangeRequest(version, delete ? null : a), connectionCancel.Token);
         await Sync();
     }

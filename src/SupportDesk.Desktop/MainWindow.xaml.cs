@@ -393,6 +393,12 @@ public partial class MainWindow : Window
         picker.Closed += (_, _) => answerPicker = null;
         picker.Resources = Resources;
         picker.Chosen += async answer => { picker.Close(); await PasteAnswer(answer, target, 0x0D); };
+        picker.DeleteRequested += async answer =>
+        {
+            await vm.SaveAnswer(answer, answer.Version, true);
+            vm.Status = "Паста удалена из общей базы.";
+            return true;
+        };
         picker.Show();
         picker.Activate();
     }

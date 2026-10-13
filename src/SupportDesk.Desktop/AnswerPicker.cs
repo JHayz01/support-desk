@@ -5,6 +5,7 @@ namespace SupportDesk.Desktop;
 public sealed class AnswerPicker : Window
 {
     public event Action<Answer>? Chosen;
+    public event Func<Answer, Task<bool>>? DeleteRequested;
     readonly ListBox list;
     bool choosing;
     public AnswerPicker(IReadOnlyList<Answer> answers, string gesture, Func<Answer, string>? badge = null, string? heading = null)
@@ -56,13 +57,39 @@ public sealed class AnswerPicker : Window
         var insert = new Button { Content = "Вставить · Enter", MinWidth = 150 };
         DockPanel.SetDock(insert, Dock.Right);
         footer.Children.Add(insert);
-        footer.Children.Add(new TextBlock { Text = "↑ ↓ — выбор · Esc — закрыть", VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.LightSlateGray });
+        var delete = new Button { Content = "Удалить из базы", MinWidth = 130, Margin = new Thickness(0, 0, 8, 0) };
+        DockPanel.SetDock(delete, Dock.Right);
+        footer.Children.Add(delete);
+        footer.Children.Add(new TextBlock { Text = "↑ ↓ · Esc", VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.LightSlateGray });
         Grid.SetRow(footer, 2);
         grid.Children.Add(footer);
         Content = grid;
         insert.Click += (_, _) => Choose();
+        delete.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not ListBoxItem { Tag: Answer answer } || DeleteRequested is null)
+                return;
+            if (MessageBox.Show(this, $"Удалить «{answer.Title}» из общей базы? Если у пасты есть другие варианты ответа, они тоже будут удалены.", "Удаление пасты", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            delete.IsEnabled = false;
+            try
+            {
+                if (await DeleteRequested(answer))
+                {
+                    foreach (var item in list.Items.OfType<ListBoxItem>().Where(item => item.Tag is Answer a && a.Id == answer.Id).ToArray())
+                        list.Items.Remove(item);
+                    if (list.Items.Count == 0) Close();
+                    else list.SelectedIndex = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex is AccessDeniedException ? "Доступ истёк. Войдите заново." : ex.Message, "Не удалось удалить пасту", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally { delete.IsEnabled = true; }
+        };
         list.MouseDoubleClick += (_, _) => Choose();
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } else if (e.Key == Key.Enter) { Choose(); e.Handled = true; } };
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } else if (e.Key == Key.Enter && !delete.IsKeyboardFocusWithin) { Choose(); e.Handled = true; } };
         Loaded += (_, _) => { list.Focus(); ((ListBoxItem)list.Items[0]).Focus(); };
     }
     void Choose()
