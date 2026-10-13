@@ -14,13 +14,15 @@ public sealed class Semantic(Store store, string url) : BackgroundService
     public bool Indexing { get; private set; } = true;
     public string Model { get; private set; } = "";
     static string TitleText(Answer a) => a.Title + ". " + a.Category;
-    static string IndexModel(string name) => name + "|title80-option20-v4";
-    static float[] Blend(float[] title, float[] body)
+    // Keep the problem title and each possible solution separate. Blending them
+    // makes a related topic look like a matching solution even when it is not.
+    static string IndexModel(string name) => name + "|separate-title-options-v5";
+    static string OptionText(ReplyOption option)
     {
-        var v = title.Zip(body, (x, y) => 0.8f * x + 0.2f * y).ToArray();
-        var norm = Math.Sqrt(v.Sum(x => (double)x * x));
-        return v.Select(x => (float)(x / Math.Max(norm, 1e-12))).ToArray();
+        var text = option.When + ". " + option.Title + ". " + option.Body;
+        return text[..Math.Min(text.Length, 2000)];
     }
+    static double Similarity(float[] a, float[] b) => a.Zip(b, (x, y) => (double)x * y).Sum();
     async Task<EmbeddingResult> Embed(string[] texts, CancellationToken ct)
     {
         for (int attempt=0;;attempt++)
@@ -59,7 +61,7 @@ public sealed class Semantic(Store store, string url) : BackgroundService
                 var pending = snapshot.Answers.Where(a => !ready.TryGetValue(a.Id, out var v) || v.Version != a.Version || v.Model != Model).ToArray();
                 Indexing = pending.Length > 0;
                 // Index every alternative, so later answers are not lost to the model's token limit.
-                var inputs = pending.SelectMany(a => new[] { (Id:a.Id, Text:TitleText(a)) }.Concat(a.Options.Select(o => (Id:a.Id, Text:(o.Title + ". " + o.When + "\n" + o.Body)[..Math.Min((o.Title + ". " + o.When + "\n" + o.Body).Length, 2000)])))).ToArray();
+                var inputs = pending.SelectMany(a => new[] { (Id:a.Id, Text:TitleText(a)) }.Concat(a.Options.Select(o => (Id:a.Id, Text:OptionText(o))))).ToArray();
                 var embedded = new Dictionary<string, List<float[]>>();
                 var byId = pending.ToDictionary(a=>a.Id);
                 foreach (var batch in inputs.Chunk(4))
@@ -72,7 +74,7 @@ public sealed class Semantic(Store store, string url) : BackgroundService
                         var answer = byId[batch[i].Id];
                         if(vectors.Count == answer.Options.Count+1)
                         {
-                            Store.Run(c, "INSERT INTO vectors(id,version,model,vector) SELECT @id,@v,@m,@data WHERE EXISTS(SELECT 1 FROM answers WHERE id=@id AND version=@v) ON CONFLICT(id) DO UPDATE SET version=excluded.version,model=excluded.model,vector=excluded.vector", ("@id", answer.Id), ("@v", answer.Version), ("@m", IndexModel(output.Model)), ("@data", JsonSerializer.Serialize(vectors.Skip(1).Select(v => Blend(vectors[0], v)).ToArray())));
+                            Store.Run(c, "INSERT INTO vectors(id,version,model,vector) SELECT @id,@v,@m,@data WHERE EXISTS(SELECT 1 FROM answers WHERE id=@id AND version=@v) ON CONFLICT(id) DO UPDATE SET version=excluded.version,model=excluded.model,vector=excluded.vector", ("@id", answer.Id), ("@v", answer.Version), ("@m", IndexModel(output.Model)), ("@data", JsonSerializer.Serialize(vectors)));
                             embedded.Remove(answer.Id);
                         }
                     }
@@ -116,13 +118,19 @@ public sealed class Semantic(Store store, string url) : BackgroundService
             {
                 ready++;
                 var alternatives = JsonSerializer.Deserialize<float[][]>(r.GetString(1))!;
-                if (alternatives.Length == 0 || alternatives.Any(v => v.Length != vector.Length))
+                if (alternatives.Length < 2 || alternatives.Any(v => v.Length != vector.Length))
                     continue;
-                double cosine = alternatives.Max(other => vector.Zip(other, (x, y) => (double)x * y).Sum());
-                if (cosine < 0.35 && !lexical.ContainsKey(r.GetString(0)) && keywords.GetValueOrDefault(r.GetString(0)) < 0.5)
+                var id = r.GetString(0);
+                double titleSimilarity = Similarity(vector, alternatives[0]);
+                double solutionSimilarity = alternatives.Skip(1).Max(other => Similarity(vector, other));
+                double keywordScore = keywords.GetValueOrDefault(id);
+                // A title match alone is not evidence that the proposed answer solves the problem.
+                if (solutionSimilarity < 0.43 && !(titleSimilarity >= 0.52 && keywordScore >= 0.45))
                     continue;
-                double score = cosine + 0.18 * keywords.GetValueOrDefault(r.GetString(0)) + (lexical.TryGetValue(r.GetString(0), out var rank) ? 0.2 / (1 + rank) : 0) + Math.Min(0.3, 0.1 * SemanticKeywords.TitleOverlap(query, byId.GetValueOrDefault(r.GetString(0))?.Title ?? ""));
-                hits.Add(new(r.GetString(0), score));
+                double score = 0.7 * solutionSimilarity + 0.3 * titleSimilarity + 0.12 * keywordScore
+                    + (lexical.TryGetValue(id, out var rank) ? 0.08 / (1 + rank) : 0)
+                    + Math.Min(0.08, 0.04 * SemanticKeywords.TitleOverlap(query, byId.GetValueOrDefault(id)?.Title ?? ""));
+                hits.Add(new(id, score));
             }
             return new(hits.OrderByDescending(h => h.Score).Take(Math.Clamp(limit, 1, 50)).ToList(), Model, Indexing || ready < snapshot.Answers.Count);
         }

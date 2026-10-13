@@ -253,6 +253,25 @@ public partial class MainWindow : Window
     }
     void NewClick(object sender, RoutedEventArgs e) => Edit(null);
     void EditClick(object sender, RoutedEventArgs e) => Edit(vm.Selected);
+    async void DeleteFromListClick(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!vm.Unlocked || sender is not Button { DataContext: Answer answer } button)
+            return;
+        if (MessageBox.Show(this, $"Удалить пасту «{answer.Title}» из общей базы?", "Удаление пасты", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+        button.IsEnabled = false;
+        try
+        {
+            await vm.SaveAnswer(answer, answer.Version, true);
+            vm.Status = "Паста удалена из общей базы.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex is AccessDeniedException ? "Доступ истёк. Войдите заново." : ex.Message, "Не удалось удалить пасту", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally { button.IsEnabled = true; }
+    }
     void Edit(Answer? original)
     {
         if (!vm.Unlocked)
