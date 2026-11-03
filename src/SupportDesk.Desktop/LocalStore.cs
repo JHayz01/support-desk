@@ -59,17 +59,24 @@ public sealed class LocalStore
         root = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CristalixSupportPublic");
         Directory.CreateDirectory(root);
         bool oldLocalPassword = false;
-        try
+        Settings = new();
+        var settingsPath = Path.Combine(root, "settings.bin");
+        var candidates = new[] { settingsPath, settingsPath + ".bak" }
+            .Concat(Directory.GetFiles(root, "settings.bin.*.tmp").OrderByDescending(File.GetLastWriteTimeUtc));
+        foreach (var candidate in candidates)
         {
-            var data = ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(root, "settings.bin")), null, DataProtectionScope.CurrentUser);
-            Settings = JsonSerializer.Deserialize<Settings>(data, options) ?? new();
-            using var legacy = JsonDocument.Parse(data);
-            oldLocalPassword = legacy.RootElement.TryGetProperty("PasswordEnabled", out var flag) && flag.ValueKind == JsonValueKind.True;
+            if (!TryReadSettings(candidate, out var loaded, out oldLocalPassword)) continue;
+            Settings = loaded!;
+            // Repair the primary from a validated copy before the next save rotates the backup.
+            if (candidate != settingsPath)
+            {
+                PreserveDamagedSettings(settingsPath);
+                Atomic(settingsPath, File.ReadAllBytes(candidate));
+            }
+            break;
         }
-        catch { Settings = new(); }
         if (oldLocalPassword)
         {
-            Settings.WrappedKey = [];
             Settings.WrappedKey = [];
             var cache = Path.Combine(root, "answers.vault");
             if (File.Exists(cache)) File.Delete(cache);
@@ -90,14 +97,53 @@ public sealed class LocalStore
             if (!clone.Remember)
                 clone.Session = null;
             byte[] bytes = ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(clone, options), null, DataProtectionScope.CurrentUser);
-            Atomic(Path.Combine(root, "settings.bin"), bytes);
+            var path = Path.Combine(root, "settings.bin");
+            if (File.Exists(path) && !TryReadSettings(path, out _, out _))
+                PreserveDamagedSettings(path);
+            Atomic(path, bytes, backup: true);
         }
     }
-    static void Atomic(string path, byte[] data)
+    static bool TryReadSettings(string path, out Settings? settings, out bool legacyPassword)
+    {
+        settings = null;
+        legacyPassword = false;
+        try
+        {
+            var data = ProtectedData.Unprotect(File.ReadAllBytes(path), null, DataProtectionScope.CurrentUser);
+            var loaded = JsonSerializer.Deserialize<Settings>(data, options);
+            if (loaded is null || loaded.Commands is null || loaded.Favorites is null || loaded.Recent is null || loaded.WrappedKey is null)
+                return false;
+            using var legacy = JsonDocument.Parse(data);
+            legacyPassword = legacy.RootElement.TryGetProperty("PasswordEnabled", out var flag) && flag.ValueKind == JsonValueKind.True;
+            settings = loaded;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or CryptographicException or JsonException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+    static void PreserveDamagedSettings(string path)
+    {
+        if (File.Exists(path))
+            File.Move(path, path + ".damaged." + Guid.NewGuid().ToString("N"));
+    }
+    static void Atomic(string path, byte[] data, bool backup = false)
     {
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllBytes(temp, data);
-        File.Move(temp, path, true);
+        // Flush file data before publishing its name; rename alone does not flush write caches.
+        using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+        {
+            stream.Write(data);
+            stream.Flush(flushToDisk: true);
+        }
+        if (backup && File.Exists(path))
+            File.Replace(temp, path, path + ".bak");
+        else
+            File.Move(temp, path, true);
+        // The first save also needs a recovery copy, not just subsequent replacements.
+        if (backup && !File.Exists(path + ".bak"))
+            Atomic(path + ".bak", data);
     }
     public void Unlock()
     {

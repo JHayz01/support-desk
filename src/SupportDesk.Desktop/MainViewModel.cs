@@ -258,7 +258,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Notify(nameof(Category));
         if (Selected is not null)
             Selected = answers.GetValueOrDefault(Selected.Id);
-        Local.Settings.Commands.RemoveAll(b => !answers.ContainsKey(b.AnswerId));
+        // Keep personal bindings even when a snapshot temporarily lacks their answer.
+        // Missing answers cannot be expanded; only explicit user actions remove bindings.
         BindingsChanged?.Invoke();
         await Local.SaveCache(new(revision, snapshot.ToList()));
         ScheduleSearch();
