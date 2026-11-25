@@ -10,6 +10,7 @@ using SupportDesk.Desktop;
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var root = Path.Combine(Path.GetTempPath(), "supportdesk-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
+await SessionChecks.Run(root);
 var answer = new Answer { Id = "test-a", Title = "Черный экран при запуске", Category = "Запуск", Body = "Оригинальный текст\r\nhttps://example.com/test", Platform = "Все" };
 var search = new SearchIndex([answer, new Answer { Id = "b", Title = "YouTube", Category = "Другое", Body = "Объект и загрузка" }]);
 Check(search.Find("чЕрный запуск").Count == 1, "Search terms");

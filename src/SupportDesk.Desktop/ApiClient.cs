@@ -10,19 +10,34 @@ public sealed class ApiClient : IDisposable
     readonly HttpClient http;
     readonly SemaphoreSlim sessionGate = new(1);
     readonly JsonSerializerOptions json = new() { PropertyNameCaseInsensitive = true };
-    public ApiClient(LocalStore store)
+    public ApiClient(LocalStore store) : this(store, CreateHandler(store)) { }
+
+    internal ApiClient(LocalStore store, HttpMessageHandler handler)
     {
         local = store;
         var uri = new Uri(store.Settings.Url);
         if (uri.Scheme != "https" || uri.UserInfo.Length > 0)
             throw new ArgumentException("Нужен адрес HTTPS.");
-        var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, cert, _, errors) => { if (cert is null) return false; if (DateTime.Now < cert.NotBefore || DateTime.Now > cert.NotAfter) return false; var pin = local.Settings.CertificateSha256; return pin.Length == 0 ? errors == SslPolicyErrors.None : Convert.ToHexString(SHA256.HashData(cert.RawData)).Equals(pin.Replace(":", ""), StringComparison.OrdinalIgnoreCase); } };
         http = new(handler)
         {
             BaseAddress = uri,
             Timeout = TimeSpan.FromSeconds(50)
         };
     }
+    static HttpClientHandler CreateHandler(LocalStore store) => new()
+    {
+        ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+        {
+            var now = DateTime.Now;
+            if (cert is null || now < cert.NotBefore || now > cert.NotAfter)
+                return false;
+            var pin = store.Settings.CertificateSha256;
+            return pin.Length == 0
+                ? errors == SslPolicyErrors.None
+                : Convert.ToHexString(SHA256.HashData(cert.RawData)).Equals(pin.Replace(":", ""), StringComparison.OrdinalIgnoreCase);
+        }
+    };
+
     async Task<T> Raw<T>(HttpMethod method, string path, object? body, string? token, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(method, path);
@@ -50,20 +65,37 @@ public sealed class ApiClient : IDisposable
     }
     public async Task<T> Request<T>(HttpMethod method, string path, object? body = null, CancellationToken ct = default)
     {
+        var token = await GetAccessToken(ct);
+        try
+        {
+            return await Raw<T>(method, path, body, token, ct);
+        }
+        catch (AccessDeniedException)
+        {
+            // The API rejects unauthorized requests before executing their handlers.
+            var renewedToken = await GetAccessToken(ct, token);
+            return await Raw<T>(method, path, body, renewedToken, ct);
+        }
+    }
+
+    async Task<string> GetAccessToken(CancellationToken ct, string? rejectedToken = null)
+    {
         await sessionGate.WaitAsync(ct);
         try
         {
-            var t = local.Settings.Session ?? throw new AccessDeniedException();
-            if (t.ExpiresAt <= DateTimeOffset.UtcNow.AddSeconds(30))
+            var session = local.Settings.Session ?? throw new AccessDeniedException();
+            bool needsRefresh = rejectedToken is null
+                ? session.ExpiresAt <= DateTimeOffset.UtcNow.AddSeconds(30)
+                : session.AccessToken == rejectedToken;
+            if (needsRefresh)
             {
-                t = await Raw<SessionTokens>(HttpMethod.Post, "/v2/auth/refresh", new RefreshRequest(t.RefreshToken), null, ct);
-                local.Settings.Session = t;
+                session = await Raw<SessionTokens>(HttpMethod.Post, "/v2/auth/refresh", new RefreshRequest(session.RefreshToken), null, ct);
+                local.Settings.Session = session;
                 local.SaveSettings();
             }
+            return session.AccessToken;
         }
         finally { sessionGate.Release(); }
-        var token = local.Settings.Session?.AccessToken ?? throw new AccessDeniedException();
-        return await Raw<T>(method, path, body, token, ct);
     }
     public async Task Logout()
     {
